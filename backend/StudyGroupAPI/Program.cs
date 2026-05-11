@@ -1,36 +1,75 @@
 
-namespace StudyGroupAPI
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
+using StudyGroupAPI.Application.Interfaces.Repositories;
+using StudyGroupAPI.Application.Interfaces.Security;
+using StudyGroupAPI.Application.Interfaces.Services;
+using StudyGroupAPI.Application.Services;
+using StudyGroupAPI.Infrastructure.Persistence;
+using StudyGroupAPI.Infrastructure.Persistence.Repositories;
+using StudyGroupAPI.Infrastructure.Security;
+using StudyGroupAPI.Infrastructure.Settings;
+using StudyGroupAPI.Middleware;
+
+namespace StudyGroupAPI;
+
+public class Program
 {
-    public class Program
+    public static void Main(string[] args)
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
+        var builder = WebApplication.CreateBuilder(args);
 
-            // Add services to the container.
+        builder.Services.AddControllers();
+        builder.Services.AddEndpointsApiExplorer();
+        builder.Services.AddSwaggerGen();
 
-            builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+        builder.Services.AddDbContext<StudyGroupDbContext>(options =>
+            options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-            var app = builder.Build();
+        builder.Services.Configure<JwtSettings>(builder.Configuration.GetSection(JwtSettings.SectionName));
+        var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>() ?? new JwtSettings();
 
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
+        builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
             {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidateLifetime = true,
+                    ValidIssuer = jwtSettings.Issuer,
+                    ValidAudience = jwtSettings.Audience,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSettings.Key))
+                };
+            });
 
-            app.UseHttpsRedirection();
+        builder.Services.AddAuthorization();
 
-            app.UseAuthorization();
+        builder.Services.AddScoped<IUserRepository, UserRepository>();
+        builder.Services.AddScoped<IRoleRepository, RoleRepository>();
+        builder.Services.AddScoped<IGroupCreatorProfileRepository, GroupCreatorProfileRepository>();
+        builder.Services.AddScoped<IPasswordHasher, Pbkdf2PasswordHasher>();
+        builder.Services.AddScoped<ITokenService, JwtTokenService>();
+        builder.Services.AddScoped<IAuthService, AuthService>();
+        builder.Services.AddScoped<IAdminService, AdminService>();
 
+        var app = builder.Build();
 
-            app.MapControllers();
+        app.UseMiddleware<ExceptionHandlingMiddleware>();
 
-            app.Run();
+        if (app.Environment.IsDevelopment())
+        {
+            app.UseSwagger();
+            app.UseSwaggerUI();
         }
+
+        app.UseHttpsRedirection();
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.MapControllers();
+        app.Run();
     }
 }
