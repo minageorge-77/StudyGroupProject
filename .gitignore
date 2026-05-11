@@ -1,0 +1,18 @@
+# Node
+node_modules
+
+# React
+dist
+
+# .NET
+bin
+obj
+
+# Visual Studio
+.vs
+
+# Logs
+*.log
+
+# Environment files
+.env
